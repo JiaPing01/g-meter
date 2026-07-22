@@ -128,10 +128,11 @@
 <script>
     // 參數設定 (單位: G)
     const T_COMFORT = 0.15;
-    const T_WARN = 0.20;
-    const T_DANGER = 0.30;
-    const JERK_LIMIT = 0.15; // G/s 變化過快
-    const SCALE = 300; // Canvas 中心到邊緣代表 0.5G
+    const T_WARN = 0.25;     // 稍微放寬警告線
+    const T_DANGER = 0.40;   // 真實的急煞差不多 0.4G 以上
+    const JERK_LIMIT = 0.35; // 把抖動的容錯率拉高，忽略小碎震
+    const DEADZONE = 0.08;   // 死區：低於 0.08G 的震動當作沒發生
+    const SCALE = 300;
 
     let isRunning = false;
     let baseline = { x: 0, y: 0, z: 0 };
@@ -204,16 +205,19 @@
         }
         if (!acc || acc.x === null) return;
 
-        // 簡單的低通濾波 (平滑化)
-        const alpha = 0.2;
+        // 強化低通濾波 (把 alpha 從 0.2 降到 0.05，讓高頻碎震被磨平)
+        const alpha = 0.05;
         let rx = acc.x - baseline.x;
         let ry = acc.y - baseline.y;
         let rz = acc.z - baseline.z;
 
-        // 假設手機直立放於儀表板：X為橫向，Z為縱向(煞車/加速)
+        // 如果震動幅度在死區內，直接當作 0，無視引擎與風扇的微震
+        if (Math.abs(rx) < DEADZONE * 9.81) rx = 0;
+        if (Math.abs(rz) < DEADZONE * 9.81) rz = 0;
+
         let latG = (rx * alpha + currentG.x * (1 - alpha)) / 9.81;
         let lonG = (rz * alpha + currentG.y * (1 - alpha)) / 9.81;
-
+        
         currentG.x = latG;
         currentG.y = lonG;
         
@@ -221,44 +225,42 @@
         
         let now = Date.now();
         let dt = (now - lastTime) / 1000;
+        let jerk = 0;
+        
         if (dt > 0 && dt < 1) {
-            let jerk = Math.abs(totalG - lastTotalG) / dt;
-            if (jerk > JERK_LIMIT) {
-                stats.score -= 0.5;
-                playBeep('jerk');
-            }
+            jerk = Math.abs(totalG - lastTotalG) / dt;
         }
         lastTime = now;
         lastTotalG = totalG;
-// 邏輯判定與動態回血
+
+        // 邏輯判定與動態回血
         let stateColor = 'var(--comfort)';
-        let isSmooth = true; // 預設這瞬間是平穩的
+        let isSmooth = true;
 
         if (totalG > T_DANGER) {
             stateColor = 'var(--danger)';
             stats.violations++;
-            stats.score -= 1.0; // 危險級別扣重一點
+            stats.score -= 1.0;
             isSmooth = false;
             if (Math.random() < 0.1) playBeep('danger'); 
         } else if (totalG > T_WARN) {
             stateColor = 'var(--warn)';
-            stats.score -= 0.15; // 警告級別微扣
+            stats.score -= 0.15;
             isSmooth = false;
             if (Math.random() < 0.05) playBeep('warn');
         }
 
-        // 處理 Jerk (方向盤打太快或雜訊)
-        if (typeof jerk !== 'undefined' && jerk > (JERK_LIMIT + 0.1)) {
+        // Jerk 判斷加入死區考量，不要被微小碎震觸發扣分
+        if (jerk > JERK_LIMIT && totalG > DEADZONE) {
             stats.score -= 0.3;
             isSmooth = false;
         }
 
-        // 舒服就回血：如果這瞬間沒有觸發任何扣分，就慢慢把分數補回來
+        // 舒服就回血
         if (isSmooth) {
-            stats.score += 0.08; // 這個數值越大回血越快，可以自己微調
+            stats.score += 0.08; 
         }
 
-        // 把分數鎖死在 0 到 100 之間，不破表也不負分
         stats.score = Math.max(0, Math.min(100, stats.score));
 
         // 更新 UI
