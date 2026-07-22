@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -53,36 +52,62 @@
             gap: 10px;
             width: 100%;
             max-width: 400px;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .card {
             background: #1e1e1e;
-            padding: 15px;
+            padding: 10px;
             border-radius: 10px;
             text-align: center;
         }
-        .card-title { font-size: 14px; color: #888; margin-bottom: 5px; }
-        .card-value { font-size: 32px; font-weight: 900; font-variant-numeric: tabular-nums; }
+        .card-title { font-size: 12px; color: #888; margin-bottom: 5px; }
+        .card-value { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
         .score-val { color: var(--primary); }
         .canvas-container {
             position: relative;
-            width: 300px;
-            height: 300px;
+            width: 260px;
+            height: 260px;
             background: #111;
             border-radius: 50%;
             border: 2px solid #333;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
         }
-        canvas { position: absolute; top: 0; left: 0; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #g-meter-bg { z-index: 1; }
         #g-meter { z-index: 2; }
         .settings {
             display: flex;
             justify-content: space-around;
             width: 100%;
-            margin-top: 15px;
+            margin-bottom: 15px;
             font-size: 14px;
             color: #aaa;
+        }
+        .sliders {
+            width: 100%;
+            max-width: 400px;
+            background: #1e1e1e;
+            padding: 10px 15px;
+            border-radius: 10px;
+            box-sizing: border-box;
+        }
+        .slider-group {
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .slider-group:last-child { margin-bottom: 0; }
+        .slider-group label {
+            font-size: 13px;
+            color: #ccc;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        input[type=range] {
+            width: 100%;
+            accent-color: var(--primary);
         }
     </style>
 </head>
@@ -125,25 +150,46 @@
         <span>超標: <span id="stat-viol">0</span> 次</span>
     </div>
 
+    <div class="sliders">
+        <div class="slider-group">
+            <label><span>死區 (忽略微震):</span> <span id="label-deadzone">0.08 G</span></label>
+            <input type="range" id="input-deadzone" min="0" max="0.2" step="0.01" value="0.08">
+        </div>
+        <div class="slider-group">
+            <label><span>Jerk 容忍度 (防快打):</span> <span id="label-jerk">0.35 G/s</span></label>
+            <input type="range" id="input-jerk" min="0.1" max="1.0" step="0.05" value="0.35">
+        </div>
+    </div>
+
 <script>
-    // 參數設定 (單位: G)
     const T_COMFORT = 0.15;
-    const T_WARN = 0.25;     // 稍微放寬警告線
-    const T_DANGER = 0.40;   // 真實的急煞差不多 0.4G 以上
-    const JERK_LIMIT = 0.35; // 把抖動的容錯率拉高，忽略小碎震
-    const DEADZONE = 0.08;   // 死區：低於 0.08G 的震動當作沒發生
-    const SCALE = 300;
+    const T_WARN = 0.25;
+    const T_DANGER = 0.40;
+    const SCALE = 300; 
+
+    // 把原本鎖死的常數變成可以被 UI 動態修改的變數
+    let DEADZONE = 0.08;
+    let JERK_LIMIT = 0.35;
+
+    // 監聽拉桿數值變化
+    document.getElementById('input-deadzone').addEventListener('input', (e) => {
+        DEADZONE = parseFloat(e.target.value);
+        document.getElementById('label-deadzone').innerText = DEADZONE.toFixed(2) + ' G';
+    });
+    document.getElementById('input-jerk').addEventListener('input', (e) => {
+        JERK_LIMIT = parseFloat(e.target.value);
+        document.getElementById('label-jerk').innerText = JERK_LIMIT.toFixed(2) + ' G/s';
+    });
 
     let isRunning = false;
     let baseline = { x: 0, y: 0, z: 0 };
-    let currentG = { x: 0, y: 0 }; // x: Lat, y: Lon
+    let currentG = { x: 0, y: 0 }; 
     let lastTotalG = 0;
     let lastTime = 0;
     
     let stats = { maxLat: 0, maxBrake: 0, violations: 0, score: 100 };
     let historyPath = [];
 
-    // 音效合成器
     let audioCtx;
     function playBeep(type) {
         if (!audioCtx) return;
@@ -173,7 +219,6 @@
         }
     }
 
-    // 初始化背景儀表板
     const bgCanvas = document.getElementById('g-meter-bg');
     const bgCtx = bgCanvas.getContext('2d');
     const cx = 150, cy = 150;
@@ -195,7 +240,6 @@
     const fgCanvas = document.getElementById('g-meter');
     const fgCtx = fgCanvas.getContext('2d');
 
-    // 處理感測器數據
     function handleMotion(event) {
         if (!isRunning) return;
         
@@ -205,13 +249,11 @@
         }
         if (!acc || acc.x === null) return;
 
-        // 強化低通濾波 (把 alpha 從 0.2 降到 0.05，讓高頻碎震被磨平)
         const alpha = 0.05;
         let rx = acc.x - baseline.x;
         let ry = acc.y - baseline.y;
         let rz = acc.z - baseline.z;
 
-        // 如果震動幅度在死區內，直接當作 0，無視引擎與風扇的微震
         if (Math.abs(rx) < DEADZONE * 9.81) rx = 0;
         if (Math.abs(rz) < DEADZONE * 9.81) rz = 0;
 
@@ -233,7 +275,6 @@
         lastTime = now;
         lastTotalG = totalG;
 
-        // 邏輯判定與動態回血
         let stateColor = 'var(--comfort)';
         let isSmooth = true;
 
@@ -250,20 +291,21 @@
             if (Math.random() < 0.05) playBeep('warn');
         }
 
-        // Jerk 判斷加入死區考量，不要被微小碎震觸發扣分
         if (jerk > JERK_LIMIT && totalG > DEADZONE) {
             stats.score -= 0.3;
             isSmooth = false;
         }
 
-        // 舒服就回血
         if (isSmooth) {
             stats.score += 0.08; 
         }
 
+        // 靠北，這兩行就是上次漏掉的，補回來最大值就會動了
+        stats.maxLat = Math.max(stats.maxLat, Math.abs(latG));
+        if (lonG > stats.maxBrake) stats.maxBrake = lonG; 
+
         stats.score = Math.max(0, Math.min(100, stats.score));
 
-        // 更新 UI
         document.getElementById('val-total').innerText = totalG.toFixed(2);
         document.getElementById('val-total').style.color = stateColor;
         document.getElementById('val-lat').innerText = latG.toFixed(2);
@@ -274,12 +316,10 @@
         document.getElementById('stat-viol').innerText = stats.violations;
         document.getElementById('val-score').innerText = Math.round(stats.score);
 
-        // 更新軌跡
         historyPath.push({ x: latG, y: lonG });
         if (historyPath.length > 50) historyPath.shift();
     }
 
-    // 繪製迴圈
     function draw() {
         if (!isRunning) {
             requestAnimationFrame(draw);
@@ -312,9 +352,7 @@
         requestAnimationFrame(draw);
     }
 
-    // 按鈕綁定
     document.getElementById('btn-toggle').addEventListener('click', async () => {
-        // 請求 iOS 權限
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
                 let state = await DeviceMotionEvent.requestPermission();
@@ -339,7 +377,6 @@
     });
 
     document.getElementById('btn-cal').addEventListener('click', () => {
-        // 暫存一瞬間的基準重力
         let listener = (e) => {
             let acc = e.accelerationIncludingGravity || e.acceleration;
             if(acc && acc.x !== null) {
@@ -348,7 +385,7 @@
                 baseline.z = acc.z;
                 historyPath = [];
                 stats = { maxLat: 0, maxBrake: 0, violations: 0, score: 100 };
-                playBeep('jerk'); // 逼一聲代表校正完成
+                playBeep('jerk'); 
             }
             window.removeEventListener('devicemotion', listener);
         };
