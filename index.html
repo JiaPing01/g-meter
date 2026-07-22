@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>G-Force 教練</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --text: #ffffff;
+            --primary: #00ffcc;
+            --comfort: #4caf50;
+            --warn: #ff9800;
+            --danger: #f44336;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+        h1 { margin: 10px 0; font-size: 24px; color: var(--primary); }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            width: 100%;
+            justify-content: center;
+        }
+        button {
+            background: #333;
+            color: white;
+            border: 2px solid #555;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            flex: 1;
+            max-width: 150px;
+            cursor: pointer;
+        }
+        button.active { border-color: var(--primary); background: #222; }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 15px;
+        }
+        .card {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .card-title { font-size: 14px; color: #888; margin-bottom: 5px; }
+        .card-value { font-size: 32px; font-weight: 900; font-variant-numeric: tabular-nums; }
+        .score-val { color: var(--primary); }
+        .canvas-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            background: #111;
+            border-radius: 50%;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        canvas { position: absolute; top: 0; left: 0; }
+        #g-meter-bg { z-index: 1; }
+        #g-meter { z-index: 2; }
+        .settings {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>司機 G 力監控</h1>
+    
+    <div class="controls">
+        <button id="btn-toggle">啟動/授權</button>
+        <button id="btn-cal">基準校正</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="card">
+            <div class="card-title">合成 G (Total)</div>
+            <div class="card-value" id="val-total">0.00</div>
+        </div>
+        <div class="card">
+            <div class="card-title">舒適度評分</div>
+            <div class="card-value score-val" id="val-score">100</div>
+        </div>
+        <div class="card">
+            <div class="card-title">橫向 G (Lat)</div>
+            <div class="card-value" id="val-lat">0.00</div>
+        </div>
+        <div class="card">
+            <div class="card-title">縱向 G (Lon)</div>
+            <div class="card-value" id="val-lon">0.00</div>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="g-meter-bg" width="300" height="300"></canvas>
+        <canvas id="g-meter" width="300" height="300"></canvas>
+    </div>
+
+    <div class="settings">
+        <span>最大橫向: <span id="stat-lat">0.00</span></span>
+        <span>最大煞車: <span id="stat-lon">0.00</span></span>
+        <span>超標: <span id="stat-viol">0</span> 次</span>
+    </div>
+
+<script>
+    // 參數設定 (單位: G)
+    const T_COMFORT = 0.15;
+    const T_WARN = 0.20;
+    const T_DANGER = 0.30;
+    const JERK_LIMIT = 0.15; // G/s 變化過快
+    const SCALE = 300; // Canvas 中心到邊緣代表 0.5G
+
+    let isRunning = false;
+    let baseline = { x: 0, y: 0, z: 0 };
+    let currentG = { x: 0, y: 0 }; // x: Lat, y: Lon
+    let lastTotalG = 0;
+    let lastTime = 0;
+    
+    let stats = { maxLat: 0, maxBrake: 0, violations: 0, score: 100 };
+    let historyPath = [];
+
+    // 音效合成器
+    let audioCtx;
+    function playBeep(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        if (type === 'warn') {
+            osc.frequency.value = 400;
+            osc.type = 'square';
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        } else if (type === 'danger') {
+            osc.frequency.value = 800;
+            osc.type = 'sawtooth';
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        } else if (type === 'jerk') {
+            osc.frequency.value = 600;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+    }
+
+    // 初始化背景儀表板
+    const bgCanvas = document.getElementById('g-meter-bg');
+    const bgCtx = bgCanvas.getContext('2d');
+    const cx = 150, cy = 150;
+    
+    bgCtx.strokeStyle = '#333';
+    bgCtx.lineWidth = 1;
+    for(let g = 0.1; g <= 0.4; g += 0.1) {
+        bgCtx.beginPath();
+        bgCtx.arc(cx, cy, g * (150/0.5), 0, Math.PI * 2);
+        bgCtx.stroke();
+        bgCtx.fillStyle = '#555';
+        bgCtx.fillText(g.toFixed(1)+'G', cx + 2, cy - (g * (150/0.5)) + 12);
+    }
+    bgCtx.beginPath();
+    bgCtx.moveTo(cx, 0); bgCtx.lineTo(cx, 300);
+    bgCtx.moveTo(0, cy); bgCtx.lineTo(300, cy);
+    bgCtx.stroke();
+
+    const fgCanvas = document.getElementById('g-meter');
+    const fgCtx = fgCanvas.getContext('2d');
+
+    // 處理感測器數據
+    function handleMotion(event) {
+        if (!isRunning) return;
+        
+        let acc = event.acceleration; 
+        if (!acc || acc.x === null) {
+            acc = event.accelerationIncludingGravity; 
+        }
+        if (!acc || acc.x === null) return;
+
+        // 簡單的低通濾波 (平滑化)
+        const alpha = 0.2;
+        let rx = acc.x - baseline.x;
+        let ry = acc.y - baseline.y;
+        let rz = acc.z - baseline.z;
+
+        // 假設手機直立放於儀表板：X為橫向，Z為縱向(煞車/加速)
+        let latG = (rx * alpha + currentG.x * (1 - alpha)) / 9.81;
+        let lonG = (rz * alpha + currentG.y * (1 - alpha)) / 9.81;
+
+        currentG.x = latG;
+        currentG.y = lonG;
+        
+        let totalG = Math.sqrt(latG*latG + lonG*lonG);
+        
+        let now = Date.now();
+        let dt = (now - lastTime) / 1000;
+        if (dt > 0 && dt < 1) {
+            let jerk = Math.abs(totalG - lastTotalG) / dt;
+            if (jerk > JERK_LIMIT) {
+                stats.score -= 0.5;
+                playBeep('jerk');
+            }
+        }
+        lastTime = now;
+        lastTotalG = totalG;
+
+        // 邏輯判定
+        let stateColor = 'var(--comfort)';
+        if (totalG > T_DANGER) {
+            stateColor = 'var(--danger)';
+            stats.violations++;
+            stats.score -= 1;
+            if (Math.random() < 0.1) playBeep('danger'); // 避免吵死，限制發聲頻率
+        } else if (totalG > T_WARN) {
+            stateColor = 'var(--warn)';
+            stats.score -= 0.1;
+            if (Math.random() < 0.05) playBeep('warn');
+        }
+
+        stats.maxLat = Math.max(stats.maxLat, Math.abs(latG));
+        if (lonG > stats.maxBrake) stats.maxBrake = lonG; // 正 Z 軸通常是煞車
+        stats.score = Math.max(0, stats.score);
+
+        // 更新 UI
+        document.getElementById('val-total').innerText = totalG.toFixed(2);
+        document.getElementById('val-total').style.color = stateColor;
+        document.getElementById('val-lat').innerText = latG.toFixed(2);
+        document.getElementById('val-lon').innerText = lonG.toFixed(2);
+        
+        document.getElementById('stat-lat').innerText = stats.maxLat.toFixed(2);
+        document.getElementById('stat-lon').innerText = stats.maxBrake.toFixed(2);
+        document.getElementById('stat-viol').innerText = stats.violations;
+        document.getElementById('val-score').innerText = Math.round(stats.score);
+
+        // 更新軌跡
+        historyPath.push({ x: latG, y: lonG });
+        if (historyPath.length > 50) historyPath.shift();
+    }
+
+    // 繪製迴圈
+    function draw() {
+        if (!isRunning) {
+            requestAnimationFrame(draw);
+            return;
+        }
+        
+        fgCtx.clearRect(0, 0, 300, 300);
+        
+        if (historyPath.length > 1) {
+            fgCtx.beginPath();
+            fgCtx.lineWidth = 4;
+            fgCtx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+            for (let i = 0; i < historyPath.length; i++) {
+                let px = cx + (historyPath[i].x / 0.5) * 150;
+                let py = cy - (historyPath[i].y / 0.5) * 150;
+                if (i === 0) fgCtx.moveTo(px, py);
+                else fgCtx.lineTo(px, py);
+            }
+            fgCtx.stroke();
+        }
+
+        let currentPx = cx + (currentG.x / 0.5) * 150;
+        let currentPy = cy - (currentG.y / 0.5) * 150;
+        
+        fgCtx.beginPath();
+        fgCtx.arc(currentPx, currentPy, 8, 0, Math.PI * 2);
+        fgCtx.fillStyle = '#ff0055';
+        fgCtx.fill();
+
+        requestAnimationFrame(draw);
+    }
+
+    // 按鈕綁定
+    document.getElementById('btn-toggle').addEventListener('click', async () => {
+        // 請求 iOS 權限
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                let state = await DeviceMotionEvent.requestPermission();
+                if (state !== 'granted') return alert('被拒絕存取感測器啦！');
+            } catch (e) { console.error(e); }
+        }
+        
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        isRunning = !isRunning;
+        let btn = document.getElementById('btn-toggle');
+        if (isRunning) {
+            window.addEventListener('devicemotion', handleMotion);
+            btn.innerText = '停止';
+            btn.classList.add('active');
+            lastTime = Date.now();
+        } else {
+            window.removeEventListener('devicemotion', handleMotion);
+            btn.innerText = '啟動';
+            btn.classList.remove('active');
+        }
+    });
+
+    document.getElementById('btn-cal').addEventListener('click', () => {
+        // 暫存一瞬間的基準重力
+        let listener = (e) => {
+            let acc = e.accelerationIncludingGravity || e.acceleration;
+            if(acc && acc.x !== null) {
+                baseline.x = acc.x;
+                baseline.y = acc.y;
+                baseline.z = acc.z;
+                historyPath = [];
+                stats = { maxLat: 0, maxBrake: 0, violations: 0, score: 100 };
+                playBeep('jerk'); // 逼一聲代表校正完成
+            }
+            window.removeEventListener('devicemotion', listener);
+        };
+        window.addEventListener('devicemotion', listener);
+    });
+
+    draw();
+</script>
+</body>
+</html>
