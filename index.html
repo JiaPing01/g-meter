@@ -22,10 +22,31 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            overflow: hidden;
+            overflow-x: hidden;
             touch-action: none;
         }
-        h1 { margin: 10px 0; font-size: 24px; color: var(--primary); }
+        h1 { margin: 5px 0 15px 0; font-size: 22px; color: var(--primary); text-align: center; width: 100%; }
+        
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 450px;
+            align-items: center;
+        }
+
+        /* 橫向模式 UI 自動分左右 */
+        @media (orientation: landscape) {
+            .main-container {
+                flex-direction: row;
+                max-width: 900px;
+                justify-content: space-around;
+                align-items: flex-start;
+            }
+            .left-panel, .right-panel { width: 48%; }
+            .canvas-container { margin-top: 20px; }
+        }
+
         .controls {
             display: flex;
             gap: 10px;
@@ -37,21 +58,20 @@
             background: #333;
             color: white;
             border: 2px solid #555;
-            padding: 15px 20px;
-            font-size: 18px;
+            padding: 12px 15px;
+            font-size: 16px;
             font-weight: bold;
             border-radius: 8px;
             flex: 1;
-            max-width: 150px;
             cursor: pointer;
         }
         button.active { border-color: var(--primary); background: #222; }
+        
         .dashboard {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
             width: 100%;
-            max-width: 400px;
             margin-bottom: 10px;
         }
         .card {
@@ -61,8 +81,9 @@
             text-align: center;
         }
         .card-title { font-size: 12px; color: #888; margin-bottom: 5px; }
-        .card-value { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
+        .card-value { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
         .score-val { color: var(--primary); }
+        
         .canvas-container {
             position: relative;
             width: 260px;
@@ -71,114 +92,126 @@
             border-radius: 50%;
             border: 2px solid #333;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            margin-bottom: 10px;
+            margin: 0 auto 10px auto;
         }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #g-meter-bg { z-index: 1; }
         #g-meter { z-index: 2; }
+        
         .settings {
             display: flex;
             justify-content: space-around;
             width: 100%;
             margin-bottom: 15px;
-            font-size: 14px;
+            font-size: 13px;
             color: #aaa;
+            text-align: center;
         }
+        
         .sliders {
             width: 100%;
-            max-width: 400px;
             background: #1e1e1e;
-            padding: 10px 15px;
+            padding: 15px;
             border-radius: 10px;
             box-sizing: border-box;
         }
-        .slider-group {
-            margin-bottom: 10px;
-            display: flex;
-            flex-direction: column;
-        }
+        .slider-group { margin-bottom: 15px; display: flex; flex-direction: column; }
         .slider-group:last-child { margin-bottom: 0; }
         .slider-group label {
             font-size: 13px;
             color: #ccc;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             display: flex;
             justify-content: space-between;
         }
-        input[type=range] {
-            width: 100%;
-            accent-color: var(--primary);
-        }
+        input[type=range] { width: 100%; accent-color: var(--primary); }
     </style>
 </head>
 <body>
 
     <h1>司機 G 力監控</h1>
     
-    <div class="controls">
-        <button id="btn-toggle">啟動/授權</button>
-        <button id="btn-cal">基準校正</button>
-    </div>
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="controls">
+                <button id="btn-toggle">啟動/授權</button>
+                <button id="btn-cal">基準校正</button>
+            </div>
 
-    <div class="dashboard">
-        <div class="card">
-            <div class="card-title">合成 G (Total)</div>
-            <div class="card-value" id="val-total">0.00</div>
-        </div>
-        <div class="card">
-            <div class="card-title">舒適度評分</div>
-            <div class="card-value score-val" id="val-score">100</div>
-        </div>
-        <div class="card">
-            <div class="card-title">橫向 G (Lat)</div>
-            <div class="card-value" id="val-lat">0.00</div>
-        </div>
-        <div class="card">
-            <div class="card-title">縱向 G (Lon)</div>
-            <div class="card-value" id="val-lon">0.00</div>
-        </div>
-    </div>
+            <div class="dashboard">
+                <div class="card">
+                    <div class="card-title">合成 G (Total)</div>
+                    <div class="card-value" id="val-total">0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">舒適度評分</div>
+                    <div class="card-value score-val" id="val-score">100</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">橫向 G (Lat)</div>
+                    <div class="card-value" id="val-lat">0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">縱向 G (Lon)</div>
+                    <div class="card-value" id="val-lon">0.00</div>
+                </div>
+            </div>
 
-    <div class="canvas-container">
-        <canvas id="g-meter-bg" width="300" height="300"></canvas>
-        <canvas id="g-meter" width="300" height="300"></canvas>
-    </div>
-
-    <div class="settings">
-        <span>最大橫向: <span id="stat-lat">0.00</span></span>
-        <span>最大煞車: <span id="stat-lon">0.00</span></span>
-        <span>超標: <span id="stat-viol">0</span> 次</span>
-    </div>
-
-    <div class="sliders">
-        <div class="slider-group">
-            <label><span>死區 (忽略微震):</span> <span id="label-deadzone">0.08 G</span></label>
-            <input type="range" id="input-deadzone" min="0" max="0.2" step="0.01" value="0.08">
+            <div class="settings">
+                <span>最大橫向: <span id="stat-lat">0.00</span></span>
+                <span>最大煞車: <span id="stat-lon">0.00</span></span>
+                <span>超標: <span id="stat-viol">0</span> 次</span>
+            </div>
+            
+            <div class="sliders">
+                <div class="slider-group">
+                    <label><span>警告閾值 (超過扣分/橘燈):</span> <span id="label-warn">0.20 G</span></label>
+                    <input type="range" id="input-warn" min="0.10" max="0.50" step="0.01" value="0.20">
+                </div>
+                <div class="slider-group">
+                    <label><span>危險閾值 (重扣分/紅燈):</span> <span id="label-danger">0.35 G</span></label>
+                    <input type="range" id="input-danger" min="0.20" max="0.80" step="0.01" value="0.35">
+                </div>
+                <div class="slider-group">
+                    <label><span>死區 (忽略微震不計分):</span> <span id="label-deadzone">0.08 G</span></label>
+                    <input type="range" id="input-deadzone" min="0" max="0.20" step="0.01" value="0.08">
+                </div>
+            </div>
         </div>
-        <div class="slider-group">
-            <label><span>Jerk 容忍度 (防快打):</span> <span id="label-jerk">0.35 G/s</span></label>
-            <input type="range" id="input-jerk" min="0.1" max="1.0" step="0.05" value="0.35">
+
+        <div class="right-panel">
+            <div class="canvas-container">
+                <canvas id="g-meter-bg" width="300" height="300"></canvas>
+                <canvas id="g-meter" width="300" height="300"></canvas>
+            </div>
         </div>
     </div>
 
 <script>
-    const T_COMFORT = 0.15;
-    const T_WARN = 0.25;
-    const T_DANGER = 0.40;
+    // 變數化閾值
+    let T_WARN = 0.20;
+    let T_DANGER = 0.35;
+    let DEADZONE = 0.08;
+    let JERK_LIMIT = 0.35; // 隱藏在背景，避免太多滑桿太亂
     const SCALE = 300; 
 
-    // 把原本鎖死的常數變成可以被 UI 動態修改的變數
-    let DEADZONE = 0.08;
-    let JERK_LIMIT = 0.35;
-
-    // 監聽拉桿數值變化
+    // 滑桿連動事件
+    document.getElementById('input-warn').addEventListener('input', (e) => {
+        T_WARN = parseFloat(e.target.value);
+        document.getElementById('label-warn').innerText = T_WARN.toFixed(2) + ' G';
+        if(T_WARN >= T_DANGER) {
+            T_DANGER = T_WARN + 0.05;
+            document.getElementById('input-danger').value = T_DANGER;
+            document.getElementById('label-danger').innerText = T_DANGER.toFixed(2) + ' G';
+        }
+    });
+    document.getElementById('input-danger').addEventListener('input', (e) => {
+        T_DANGER = parseFloat(e.target.value);
+        document.getElementById('label-danger').innerText = T_DANGER.toFixed(2) + ' G';
+    });
     document.getElementById('input-deadzone').addEventListener('input', (e) => {
         DEADZONE = parseFloat(e.target.value);
         document.getElementById('label-deadzone').innerText = DEADZONE.toFixed(2) + ' G';
-    });
-    document.getElementById('input-jerk').addEventListener('input', (e) => {
-        JERK_LIMIT = parseFloat(e.target.value);
-        document.getElementById('label-jerk').innerText = JERK_LIMIT.toFixed(2) + ' G/s';
     });
 
     let isRunning = false;
@@ -186,9 +219,24 @@
     let currentG = { x: 0, y: 0 }; 
     let lastTotalG = 0;
     let lastTime = 0;
-    
     let stats = { maxLat: 0, maxBrake: 0, violations: 0, score: 100 };
     let historyPath = [];
+
+    // 螢幕喚醒鎖 Wake Lock API
+    let wakeLock = null;
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) { console.error('Wake Lock 失敗:', err); }
+    }
+    // 網頁切出去再回來要重新要鎖
+    document.addEventListener('visibilitychange', async () => {
+        if (wakeLock !== null && document.visibilityState === 'visible' && isRunning) {
+            await requestWakeLock();
+        }
+    });
 
     let audioCtx;
     function playBeep(type) {
@@ -249,16 +297,36 @@
         }
         if (!acc || acc.x === null) return;
 
+        // 計算相對原始數據
+        let dx = acc.x - baseline.x;
+        let dy = acc.y - baseline.y;
+        let dz = acc.z - baseline.z;
+
+        // 判斷螢幕方向來交換軸向 (橫向模式)
+        let angle = (screen.orientation || {}).angle || window.orientation || 0;
+        let rawLat, rawLon;
+        
+        // Z軸永遠是縱向(前後)，橫向則依據轉左還是轉右決定是 X 還是 Y
+        if (angle === 90) {
+            rawLat = dy;
+            rawLon = dz;
+        } else if (angle === -90 || angle === 270) {
+            rawLat = -dy;
+            rawLon = dz;
+        } else if (angle === 180) {
+            rawLat = -dx;
+            rawLon = dz;
+        } else {
+            rawLat = dx; // 預設直立
+            rawLon = dz;
+        }
+
         const alpha = 0.05;
-        let rx = acc.x - baseline.x;
-        let ry = acc.y - baseline.y;
-        let rz = acc.z - baseline.z;
+        if (Math.abs(rawLat) < DEADZONE * 9.81) rawLat = 0;
+        if (Math.abs(rawLon) < DEADZONE * 9.81) rawLon = 0;
 
-        if (Math.abs(rx) < DEADZONE * 9.81) rx = 0;
-        if (Math.abs(rz) < DEADZONE * 9.81) rz = 0;
-
-        let latG = (rx * alpha + currentG.x * (1 - alpha)) / 9.81;
-        let lonG = (rz * alpha + currentG.y * (1 - alpha)) / 9.81;
+        let latG = (rawLat * alpha + currentG.x * (1 - alpha)) / 9.81;
+        let lonG = (rawLon * alpha + currentG.y * (1 - alpha)) / 9.81;
         
         currentG.x = latG;
         currentG.y = lonG;
@@ -278,13 +346,13 @@
         let stateColor = 'var(--comfort)';
         let isSmooth = true;
 
-        if (totalG > T_DANGER) {
+        if (totalG >= T_DANGER) {
             stateColor = 'var(--danger)';
             stats.violations++;
             stats.score -= 1.0;
             isSmooth = false;
             if (Math.random() < 0.1) playBeep('danger'); 
-        } else if (totalG > T_WARN) {
+        } else if (totalG >= T_WARN) {
             stateColor = 'var(--warn)';
             stats.score -= 0.15;
             isSmooth = false;
@@ -300,17 +368,14 @@
             stats.score += 0.08; 
         }
 
-        // 靠北，這兩行就是上次漏掉的，補回來最大值就會動了
         stats.maxLat = Math.max(stats.maxLat, Math.abs(latG));
         if (lonG > stats.maxBrake) stats.maxBrake = lonG; 
-
         stats.score = Math.max(0, Math.min(100, stats.score));
 
         document.getElementById('val-total').innerText = totalG.toFixed(2);
         document.getElementById('val-total').style.color = stateColor;
         document.getElementById('val-lat').innerText = latG.toFixed(2);
         document.getElementById('val-lon').innerText = lonG.toFixed(2);
-        
         document.getElementById('stat-lat').innerText = stats.maxLat.toFixed(2);
         document.getElementById('stat-lon').innerText = stats.maxBrake.toFixed(2);
         document.getElementById('stat-viol').innerText = stats.violations;
@@ -365,11 +430,13 @@
         isRunning = !isRunning;
         let btn = document.getElementById('btn-toggle');
         if (isRunning) {
+            await requestWakeLock(); // 要喚醒鎖
             window.addEventListener('devicemotion', handleMotion);
             btn.innerText = '停止';
             btn.classList.add('active');
             lastTime = Date.now();
         } else {
+            if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
             window.removeEventListener('devicemotion', handleMotion);
             btn.innerText = '啟動';
             btn.classList.remove('active');
