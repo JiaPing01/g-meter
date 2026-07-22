@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -229,23 +230,36 @@
         }
         lastTime = now;
         lastTotalG = totalG;
-
-        // 邏輯判定
+// 邏輯判定與動態回血
         let stateColor = 'var(--comfort)';
+        let isSmooth = true; // 預設這瞬間是平穩的
+
         if (totalG > T_DANGER) {
             stateColor = 'var(--danger)';
             stats.violations++;
-            stats.score -= 1;
-            if (Math.random() < 0.1) playBeep('danger'); // 避免吵死，限制發聲頻率
+            stats.score -= 1.0; // 危險級別扣重一點
+            isSmooth = false;
+            if (Math.random() < 0.1) playBeep('danger'); 
         } else if (totalG > T_WARN) {
             stateColor = 'var(--warn)';
-            stats.score -= 0.1;
+            stats.score -= 0.15; // 警告級別微扣
+            isSmooth = false;
             if (Math.random() < 0.05) playBeep('warn');
         }
 
-        stats.maxLat = Math.max(stats.maxLat, Math.abs(latG));
-        if (lonG > stats.maxBrake) stats.maxBrake = lonG; // 正 Z 軸通常是煞車
-        stats.score = Math.max(0, stats.score);
+        // 處理 Jerk (方向盤打太快或雜訊)
+        if (typeof jerk !== 'undefined' && jerk > (JERK_LIMIT + 0.1)) {
+            stats.score -= 0.3;
+            isSmooth = false;
+        }
+
+        // 舒服就回血：如果這瞬間沒有觸發任何扣分，就慢慢把分數補回來
+        if (isSmooth) {
+            stats.score += 0.08; // 這個數值越大回血越快，可以自己微調
+        }
+
+        // 把分數鎖死在 0 到 100 之間，不破表也不負分
+        stats.score = Math.max(0, Math.min(100, stats.score));
 
         // 更新 UI
         document.getElementById('val-total').innerText = totalG.toFixed(2);
