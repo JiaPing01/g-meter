@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>G-Force 教練</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="G力教練">
+    <link rel="apple-touch-icon" href="icon.png">
     <style>
         :root {
             --bg: #121212;
@@ -188,6 +193,7 @@
     </div>
 
 <script>
+    
     // 變數化閾值
     let T_WARN = 0.20;
     let T_DANGER = 0.35;
@@ -460,6 +466,10 @@
     });
 
     draw();
+    if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+}
 </script>
+    
 </body>
 </html>
