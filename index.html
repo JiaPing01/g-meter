@@ -255,19 +255,19 @@
         if (type === 'warn') {
             osc.frequency.value = 400;
             osc.type = 'square';
-            gain.gain.setValueAtTime(0.7, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
             osc.start(); osc.stop(audioCtx.currentTime + 0.2);
         } else if (type === 'danger') {
             osc.frequency.value = 800;
             osc.type = 'sawtooth';
-            gain.gain.setValueAtTime(0.9, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
             osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         } else if (type === 'jerk') {
             osc.frequency.value = 600;
             osc.type = 'sine';
-            gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
             osc.start(); osc.stop(audioCtx.currentTime + 0.1);
         }
